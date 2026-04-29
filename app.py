@@ -7,49 +7,62 @@ import os
 
 app = Flask(__name__)
 
-# Load OpenAI
+# OpenAI
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# Load FAISS index
-index = faiss.read_index("index.faiss")
+# Safe loading
+index = None
+chunks = []
 
-# Load text chunks
-with open("chunks.txt", "r", encoding="utf-8") as f:
-    chunks = f.read().split("\n---\n")
+if os.path.exists("index.faiss"):
+    index = faiss.read_index("index.faiss")
 
-# Load users
+if os.path.exists("chunks.txt"):
+    with open("chunks.txt", "r", encoding="utf-8") as f:
+        chunks = f.read().split("\n---\n")
+
+# Load users safely
 def load_users():
     if not os.path.exists("users.txt"):
         return []
     with open("users.txt", "r") as f:
         return [line.strip() for line in f.readlines()]
 
-# Search function
+# Search function (safe)
 def search(query):
+    if index is None or not chunks:
+        return "Knowledge base not loaded."
+
     response = client.embeddings.create(
         model="text-embedding-3-small",
         input=query
     )
-    query_vector = np.array([response.data[0].embedding]).astype("float32")
 
+    query_vector = np.array([response.data[0].embedding]).astype("float32")
     D, I = index.search(query_vector, k=3)
-    results = [chunks[i] for i in I[0]]
+
+    results = []
+    for i in I[0]:
+        if i < len(chunks):
+            results.append(chunks[i])
+
     return "\n".join(results)
 
-# WhatsApp webhook
+# WhatsApp route
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
-    incoming_msg = request.values.get("Body", "").strip()
+    try:
+        incoming_msg = request.values.get("Body", "").strip()
 
-    user_number = request.values.get("From", "")
-    user_number = user_number.replace("whatsapp:", "")
+        user_number = request.values.get("From", "")
+        user_number = user_number.replace("whatsapp:", "")
 
-    AUTHORIZED_USERS = load_users()
+        AUTHORIZED_USERS = load_users()
 
-    # 🔒 Access control
-    if user_number not in AUTHORIZED_USERS:
-        resp = MessagingResponse()
-        resp.message("""🚆 IRPWM AI Assistant
+        # Access control
+        if user_number not in AUTHORIZED_USERS:
+            resp = MessagingResponse()
+            resp.message("""🚆 IRPWM AI Assistant
 
 💰 Subscription: ₹299/month
 
@@ -57,31 +70,37 @@ def whatsapp():
 https://rzp.io/l/abcd1234
 
 After payment, send screenshot to activate access.""")
+            return str(resp)
+
+        # Search
+        context = search(incoming_msg)
+
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a railway expert. Answer clearly in Hindi or English. Do not guess."
+                },
+                {
+                    "role": "user",
+                    "content": f"Context:\n{context}\n\nQuestion: {incoming_msg}"
+                }
+            ]
+        )
+
+        answer = completion.choices[0].message.content
+
+        resp = MessagingResponse()
+        resp.message(answer[:1500])
+
         return str(resp)
 
-    # 🔍 Search + AI response
-    context = search(incoming_msg)
-
-    completion = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a railway expert. Answer in Hindi or English based on user language. Be clear and practical."
-            },
-            {
-                "role": "user",
-                "content": f"Context:\n{context}\n\nQuestion: {incoming_msg}"
-            }
-        ]
-    )
-
-    answer = completion.choices[0].message.content
-
-    resp = MessagingResponse()
-    resp.message(answer[:1500])
-
-    return str(resp)
+    except Exception as e:
+        resp = MessagingResponse()
+        resp.message("⚠️ System error. Please try again later.")
+        print("ERROR:", str(e))
+        return str(resp)
 
 # Railway compatible run
 if __name__ == "__main__":
