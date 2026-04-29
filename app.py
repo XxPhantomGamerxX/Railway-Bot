@@ -13,27 +13,26 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
+    incoming_msg = request.values.get("Body", "")
+
     try:
-        incoming_msg = request.values.get("Body", "")
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a helpful railway assistant."},
+                {"role": "user", "content": incoming_msg}
+            ]
+        )
 
-        try:
-            completion = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You are a railway assistant."},
-                    {"role": "user", "content": incoming_msg}
-                ]
-            )
-            answer = completion.choices[0].message.content
+        answer = response.choices[0].message.content
 
-        except Exception as e:
-            answer = "⚠️ AI temporarily unavailable."
+    except Exception as e:
+        answer = "⚠️ AI temporarily unavailable."
 
-        resp = MessagingResponse()
-        resp.message(answer[:1500])
+    resp = MessagingResponse()
+    resp.message(answer)
 
-        return str(resp)
-
+    return str(resp)
     except Exception:
         return "Error"
 
