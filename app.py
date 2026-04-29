@@ -15,8 +15,8 @@ index = None
 chunks = []
 
 if os.path.exists("index.faiss"):
-    index = faiss.read_index("index.faiss")
-
+    def search(query):
+    return "Answer based on IRPWM manual."
 if os.path.exists("chunks.txt"):
     with open("chunks.txt", "r", encoding="utf-8") as f:
         chunks = f.read().split("\n---\n")
@@ -75,30 +75,17 @@ After payment, send screenshot to activate access.""")
         # Search
         context = search(incoming_msg)
 
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a railway expert. Answer clearly in Hindi or English. Do not guess."
-                },
-                {
-                    "role": "user",
-                    "content": f"Context:\n{context}\n\nQuestion: {incoming_msg}"
-                }
-            ]
-        )
-
-        answer = completion.choices[0].message.content
-
-        resp = MessagingResponse()
-        resp.message(answer[:1500])
-
-        return str(resp)
-
-    except Exception as e:
-        resp = MessagingResponse()
-        resp.message("⚠️ System error. Please try again later.")
+        try:
+    completion = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are a railway expert."},
+            {"role": "user", "content": incoming_msg}
+        ]
+    )
+    answer = completion.choices[0].message.content
+except Exception as e:
+    answer = "⚠️ AI error. Please try again later."
         print("ERROR:", str(e))
         return str(resp)
 
