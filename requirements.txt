@@ -1,6 +1,2 @@
 flask
-numpy
-openai
-python-dotenv
 twilio
-razorpay
