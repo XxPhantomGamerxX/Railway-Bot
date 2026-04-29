@@ -1,95 +1,26 @@
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
-import faiss
-import numpy as np
-from openai import OpenAI
 import os
 
 app = Flask(__name__)
 
-# OpenAI
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+@app.route("/")
+def home():
+    return "Bot is running"
 
-# Safe loading
-index = None
-chunks = []
-
-if os.path.exists("index.faiss"):
-    def search(query):
-    return "Answer based on IRPWM manual."
-if os.path.exists("chunks.txt"):
-    with open("chunks.txt", "r", encoding="utf-8") as f:
-        chunks = f.read().split("\n---\n")
-
-# Load users safely
-def load_users():
-    if not os.path.exists("users.txt"):
-        return []
-    with open("users.txt", "r") as f:
-        return [line.strip() for line in f.readlines()]
-
-# Search function (safe)
-def search(query):
-    if index is None or not chunks:
-        return "Knowledge base not loaded."
-
-    response = client.embeddings.create(
-        model="text-embedding-3-small",
-        input=query
-    )
-
-    query_vector = np.array([response.data[0].embedding]).astype("float32")
-    D, I = index.search(query_vector, k=3)
-
-    results = []
-    for i in I[0]:
-        if i < len(chunks):
-            results.append(chunks[i])
-
-    return "\n".join(results)
-
-# WhatsApp route
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
     try:
-        incoming_msg = request.values.get("Body", "").strip()
+        incoming_msg = request.values.get("Body", "")
 
-        user_number = request.values.get("From", "")
-        user_number = user_number.replace("whatsapp:", "")
+        resp = MessagingResponse()
+        resp.message("✅ Bot working. You said: " + incoming_msg)
 
-        AUTHORIZED_USERS = load_users()
-
-        # Access control
-        if user_number not in AUTHORIZED_USERS:
-            resp = MessagingResponse()
-            resp.message("""🚆 IRPWM AI Assistant
-
-💰 Subscription: ₹299/month
-
-👉 Pay here:
-https://rzp.io/l/abcd1234
-
-After payment, send screenshot to activate access.""")
-            return str(resp)
-
-        # Search
-        context = search(incoming_msg)
-
-        try:
-    completion = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are a railway expert."},
-            {"role": "user", "content": incoming_msg}
-        ]
-    )
-    answer = completion.choices[0].message.content
-except Exception as e:
-    answer = "⚠️ AI error. Please try again later."
-        print("ERROR:", str(e))
         return str(resp)
 
-# Railway compatible run
+    except Exception as e:
+        return "Error"
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
